@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { relativeTime } from "@/lib/format";
 import { RefreshCw, Terminal } from "lucide-vue-next";
 
-const { sessions, loading, error, configured, lastSynced, load } = useSessions();
+const { sessions, loading, error, configured, restricted, lastSynced, load } = useSessions();
 
 const query = ref("");
 const activeRepo = ref<string | null>(null);
@@ -49,6 +49,9 @@ const filtered = computed(() => {
         </h1>
         <p class="mt-1 text-sm text-muted-foreground">
           Every session you've ended, with repo, branch & a one-click resume command.
+        </p>
+        <p v-if="restricted" class="mt-1 text-xs text-muted-foreground/80">
+          Public view — showing selected projects only. Full history is private.
         </p>
       </div>
       <div class="flex flex-col items-end gap-1">
