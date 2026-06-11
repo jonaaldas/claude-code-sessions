@@ -1,88 +1,108 @@
 # Claude Code Sessions
 
-Automatically records every Claude Code session you end — session UUID, Claude's
-own title, the repo, the git branch, the linked PR, message count and timestamps
-— into [Turso](https://turso.tech), and shows them in a Vue + shadcn-vue
-dashboard so you can jump back into any past session with one click.
+A self-hosted dashboard that automatically records every [Claude Code](https://claude.com/claude-code)
+session you run — its UUID, title, repo, git branch, linked PR, message count and
+timestamps — into a [Turso](https://turso.tech) database, and shows them in a
+Vue + shadcn-vue table so you can find and resume any past session with one click.
 
-![flow](https://img.shields.io/badge/hook-→_Turso_→_dashboard-blue)
+> Claude Code stores each session as a JSONL transcript on disk but gives you no
+> overview of them. This project turns that pile of files into a searchable,
+> always-current dashboard.
+
+## Stack
+
+| Layer | Tech |
+|-------|------|
+| Ingestion | Node.js (ESM), `chokidar`, macOS `launchd` |
+| Database | Turso / libSQL (`@libsql/client`) |
+| API | Vercel Serverless Function (Node) |
+| Frontend | Vite + Vue 3 + TypeScript + Tailwind v4 + shadcn-vue |
+| Hosting | Vercel (static SPA + `/api`) |
+
+## How it works
 
 ```
-┌──────────────────┐   Stop hook + watcher   ┌─────────┐   /api/sessions   ┌────────────────┐
-│ ~/.claude/       │ ──────────────────────▶ │  Turso  │ ────────────────▶ │ Vue + shadcn   │
-│ projects/*.jsonl │   parse + upsert         │ (libSQL)│                   │ dashboard      │
-└──────────────────┘                          └─────────┘                   └────────────────┘
+   YOUR MACHINE                                   CLOUD
+   ~/.claude/projects/*.jsonl
+         │  read (fs)
+         ▼
+   parse → upsert ───── libSQL INSERT ─────▶  Turso  ◀── SELECT ── Vercel /api/sessions
+         ▲                                                              │ JSON
+   Stop hook · watcher · hourly cron                                    ▼
+   (all local — only your machine can read the files)            Vue + shadcn dashboard
 ```
+
+Collection runs **locally** in three layers, because only your machine can read
+your session files:
+
+1. **Stop hook** — the moment you end a session, Claude Code pipes its
+   `transcript_path` to a hook that ingests it.
+2. **Watcher** — a `launchd` background service watches `~/.claude/projects` and
+   upserts any transcript that changes, in real time.
+3. **Hourly sync** — a `launchd` job runs a full re-scan once an hour as a backstop.
+
+All three call the same idempotent parser and `INSERT … ON CONFLICT DO UPDATE`,
+so a session always resolves to exactly one row reflecting its latest state.
+
+The dashboard reads Turso live through a Vercel serverless function (which keeps
+the database token server-side), so the table is always current. A **Sync now**
+button force-pulls the latest and the header shows when the data was last written.
 
 ## What gets captured
 
-For every session transcript under `~/.claude/projects/`:
+For every transcript under `~/.claude/projects/`:
 
 | Field | Source |
 |-------|--------|
 | `id` | session UUID |
-| `title` | Claude's generated session title (`ai-title`) |
-| `last_prompt` / `first_prompt` | your prompts |
-| `repo` | GitHub repo from the PR link, else the cwd basename |
+| `title` | Claude's generated session title |
+| `first_prompt` / `last_prompt` | your prompts (with secrets redacted) |
+| `repo` | GitHub repo from the linked PR, else the working-dir name |
 | `git_branch`, `cwd` | the working session |
 | `pr_url`, `pr_number` | linked pull request |
 | `message_count`, `version`, `started_at`, `ended_at` | metadata |
 
-Resume any session from the dashboard — it copies `claude --resume <uuid>`.
-
-## Layout
+## Repository layout
 
 ```
-ingester/   Node parser + Turso writer, the Stop hook, the background watcher
-web/        Vite + Vue 3 + shadcn-vue dashboard with a Vercel /api function
+ingester/   Node parser + Turso writer, the Stop hook, watcher, hourly sync
+web/        Vue dashboard + Vercel /api/sessions function
 ```
 
-## Setup (≈5 minutes)
+## Run it yourself
 
 ### 1. Collector (local machine)
 
 ```bash
-# In this session you can run interactive logins with the ! prefix:
-#   ! turso auth login
+turso auth login              # one-time
 cd ingester
 npm install
-./setup-db.sh            # creates the `claude-sessions` Turso DB + writes .env
-node ingest.js --all    # backfill every existing session
-./install-watcher.sh     # real-time background watcher (launchd, starts at login)
-./install-hourly-sync.sh # hourly full re-sync (launchd safety net)
+./setup-db.sh                 # creates the Turso DB + writes .env
+node ingest.js --all          # backfill existing sessions
+./install-watcher.sh          # real-time watcher (launchd)
+./install-hourly-sync.sh      # hourly full re-sync (launchd)
 ```
 
-The **Stop hook is already registered** in `~/.claude/settings.json`, so from now
-on every session you end is ingested automatically. The watcher is a belt-and-
-suspenders background collector that also catches mid-session updates.
-
-### Why the hourly sync runs locally, not on Vercel
-
-Your session transcripts live in `~/.claude/projects/` on **your machine**. Only
-something local can read them, so the local→Turso ingestion (the part that
-actually "syncs") runs here via three layers: the **Stop hook** (on session end),
-the **watcher** (real-time), and the **hourly sync** (`ingest.js --all`, a
-backstop). A Vercel cron can't see your laptop's files, so there's nothing for it
-to ingest. The dashboard reads Turso live — it's always current — and the **Sync
-now** button just force-pulls the latest from Turso (cache-busted), with the
-header showing when the data was last written.
+The Stop hook registers itself in `~/.claude/settings.json`, so every session you
+end from now on is ingested automatically.
 
 ### 2. Dashboard (Vercel)
-
-See [`DEPLOY.md`](./DEPLOY.md). Short version:
 
 ```bash
 cd web
 npm install
-#   ! vercel login
 vercel link
-vercel env add TURSO_DATABASE_URL    # same value setup-db.sh printed
+vercel env add TURSO_DATABASE_URL    # value from setup-db.sh
 vercel env add TURSO_AUTH_TOKEN
 vercel --prod
-vercel domains add session-claude.aldas.dev   # then point DNS as instructed
 ```
 
+Set the Vercel project's **Root Directory** to `web`. Connect the GitHub repo for
+push-to-deploy. See [`DEPLOY.md`](./DEPLOY.md) for custom-domain setup.
+
 ## Local preview (no Turso, no Vercel)
+
+`@libsql/client` speaks local SQLite too, so you can run the whole thing offline:
 
 ```bash
 cd ingester && TURSO_DATABASE_URL="file:/tmp/s.db" node ingest.js --all
@@ -90,13 +110,13 @@ cd ../web && npm run build
 TURSO_DATABASE_URL="file:/tmp/s.db" node scripts/serve-local.js   # http://localhost:4321
 ```
 
-## How collection works
+## Notes
 
-- **Stop hook** (`ingester/hooks/on-stop.sh`): Claude pipes the ended session's
-  `transcript_path` to it; it ingests that one file in the background and always
-  exits 0, so it never blocks or delays session shutdown.
-- **Watcher** (`ingester/watch.js`): watches `~/.claude/projects` and upserts
-  any changed transcript (debounced). Runs as a launchd service.
+- **Secret redaction**: prompts are scanned for common token shapes (API keys,
+  JWTs, etc.) and redacted before they ever reach the database.
+- **Idempotent ingest**: re-reading a session updates its row instead of
+  duplicating it.
 
-Both call the same idempotent parser + `INSERT … ON CONFLICT DO UPDATE`, so
-re-ingesting a session just refreshes its row.
+## License
+
+MIT
