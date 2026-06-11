@@ -110,6 +110,19 @@ cd ../web && npm run build
 TURSO_DATABASE_URL="file:/tmp/s.db" node scripts/serve-local.js   # http://localhost:4321
 ```
 
+## Privacy
+
+The deployed dashboard is **public-safe by design**:
+
+- The `/api/sessions` function only exposes repos listed in the `PUBLIC_REPOS`
+  env var (comma-separated, case-insensitive). It **fails closed** — if
+  `PUBLIC_REPOS` is unset, the public site shows nothing.
+- Run locally (no `VERCEL` env, e.g. `serve-local.js`) and you see your full
+  history; the allowlist only applies on the deployed site.
+
+So you can keep work/employer sessions private while still showing the tool
+working with your personal projects.
+
 ## Notes
 
 - **Secret redaction**: prompts are scanned for common token shapes (API keys,
