@@ -1,0 +1,21 @@
+{
+  "name": "claude-sessions-ingester",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Collects Claude Code session metadata into Turso",
+  "bin": {
+    "claude-sessions-ingest": "./ingest.js"
+  },
+  "scripts": {
+    "ingest": "node ingest.js",
+    "ingest:all": "node ingest.js --all",
+    "watch": "node watch.js",
+    "dry": "node ingest.js --all --dry"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.15.4",
+    "chokidar": "^4.0.3",
+    "dotenv": "^16.4.7"
+  }
+}

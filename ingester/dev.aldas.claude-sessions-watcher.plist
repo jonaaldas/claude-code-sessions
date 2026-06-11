@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd service for the Claude session watcher.
+  Install:  ./install-watcher.sh   (copies this to ~/Library/LaunchAgents and loads it)
+  This file is a template; install-watcher.sh fills in the real node path.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.aldas.claude-sessions-watcher</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__DIR__/watch.js</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>WorkingDirectory</key>
+  <string>__DIR__</string>
+  <key>StandardOutPath</key>
+  <string>__DIR__/watch.log</string>
+  <key>StandardErrorPath</key>
+  <string>__DIR__/watch.log</string>
+</dict>
+</plist>
