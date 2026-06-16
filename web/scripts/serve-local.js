@@ -35,7 +35,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/sessions") {
     try {
       const r = await client.execute(
-        `SELECT id, title, summary, first_prompt, last_prompt, cwd, repo, git_branch,
+        `SELECT id, source, title, summary, first_prompt, last_prompt, cwd, repo, git_branch,
                 pr_url, pr_number, message_count, version, started_at, ended_at, updated_at
          FROM sessions ORDER BY ended_at DESC LIMIT 1000`
       );

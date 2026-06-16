@@ -19,10 +19,16 @@ defineProps<{ sessions: Session[]; loading: boolean }>();
 
 const copiedId = ref<string | null>(null);
 
+// Each agent has its own resume invocation.
+function resumeCommand(s: Session): string {
+  return s.source === "codex"
+    ? `codex resume ${s.id}`
+    : `claude --resume ${s.id}`;
+}
+
 async function copyResume(s: Session) {
-  const cmd = `claude --resume ${s.id}`;
   try {
-    await navigator.clipboard.writeText(cmd);
+    await navigator.clipboard.writeText(resumeCommand(s));
     copiedId.value = s.id;
     setTimeout(() => (copiedId.value = null), 1500);
   } catch {
@@ -33,6 +39,10 @@ async function copyResume(s: Session) {
 function label(s: Session): string {
   return s.title || s.summary || s.last_prompt || s.first_prompt || "Untitled session";
 }
+
+function agentName(s: Session): string {
+  return s.source === "codex" ? "Codex" : "Claude";
+}
 </script>
 
 <template>
@@ -40,7 +50,8 @@ function label(s: Session): string {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead class="w-[40%]">Session</TableHead>
+          <TableHead class="w-[38%]">Session</TableHead>
+          <TableHead>Agent</TableHead>
           <TableHead>Repo</TableHead>
           <TableHead>Branch</TableHead>
           <TableHead class="text-right">Msgs</TableHead>
@@ -50,8 +61,8 @@ function label(s: Session): string {
         </TableRow>
       </TableHeader>
       <TableBody>
-        <TableEmpty v-if="!loading && sessions.length === 0" :colspan="7">
-          No sessions yet. End a Claude Code session to populate this table.
+        <TableEmpty v-if="!loading && sessions.length === 0" :colspan="8">
+          No sessions yet. End a Claude Code or Codex session to populate this table.
         </TableEmpty>
         <TableRow v-for="s in sessions" :key="s.id">
           <TableCell>
@@ -63,6 +74,16 @@ function label(s: Session): string {
               {{ s.last_prompt }}
             </div>
             <code class="text-[10px] text-muted-foreground/70">{{ s.id }}</code>
+          </TableCell>
+          <TableCell>
+            <Badge
+              variant="outline"
+              :class="s.source === 'codex'
+                ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                : 'border-orange-500/40 text-orange-600 dark:text-orange-400'"
+            >
+              {{ agentName(s) }}
+            </Badge>
           </TableCell>
           <TableCell>
             <Badge variant="secondary">{{ s.repo || "—" }}</Badge>
@@ -101,7 +122,7 @@ function label(s: Session): string {
               size="sm"
               variant="outline"
               @click="copyResume(s)"
-              :title="`claude --resume ${s.id}`"
+              :title="resumeCommand(s)"
             >
               <Check v-if="copiedId === s.id" class="size-3.5" />
               <Copy v-else class="size-3.5" />

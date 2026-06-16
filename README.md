@@ -1,13 +1,15 @@
-# Claude Code Sessions
+# Coding Agent Sessions
 
-A self-hosted dashboard that automatically records every [Claude Code](https://claude.com/claude-code)
-session you run — its UUID, title, repo, git branch, linked PR, message count and
-timestamps — into a [Turso](https://turso.tech) database, and shows them in a
-Vue + shadcn-vue table so you can find and resume any past session with one click.
+A self-hosted dashboard that automatically records every
+[Claude Code](https://claude.com/claude-code) and
+[Codex CLI](https://developers.openai.com/codex/cli) session you run — its UUID,
+title, repo, git branch, linked PR, message count and timestamps — into a
+[Turso](https://turso.tech) database, and shows them in a Vue + shadcn-vue table
+so you can find and resume any past session with one click.
 
-> Claude Code stores each session as a JSONL transcript on disk but gives you no
+> Both agents store each session as a JSONL transcript on disk but give you no
 > overview of them. This project turns that pile of files into a searchable,
-> always-current dashboard.
+> always-current dashboard, tagging each row with the agent that produced it.
 
 ## Stack
 
@@ -24,6 +26,7 @@ Vue + shadcn-vue table so you can find and resume any past session with one clic
 ```
    YOUR MACHINE                                   CLOUD
    ~/.claude/projects/*.jsonl
+   ~/.codex/sessions/**/*.jsonl
          │  read (fs)
          ▼
    parse → upsert ───── libSQL INSERT ─────▶  Turso  ◀── SELECT ── Vercel /api/sessions
@@ -35,14 +38,15 @@ Vue + shadcn-vue table so you can find and resume any past session with one clic
 Collection runs **locally** in three layers, because only your machine can read
 your session files:
 
-1. **Stop hook** — the moment you end a session, Claude Code pipes its
+1. **Stop hook** — the moment you end a Claude Code session, it pipes its
    `transcript_path` to a hook that ingests it.
-2. **Watcher** — a `launchd` background service watches `~/.claude/projects` and
-   upserts any transcript that changes, in real time.
+2. **Watcher** — a `launchd` background service watches both `~/.claude/projects`
+   and `~/.codex/sessions` and upserts any transcript that changes, in real time.
 3. **Hourly sync** — a `launchd` job runs a full re-scan once an hour as a backstop.
 
-All three call the same idempotent parser and `INSERT … ON CONFLICT DO UPDATE`,
-so a session always resolves to exactly one row reflecting its latest state.
+All three call the same idempotent parser (auto-detecting Claude vs. Codex
+transcripts) and `INSERT … ON CONFLICT DO UPDATE`, so a session always resolves
+to exactly one row reflecting its latest state.
 
 The dashboard reads Turso live through a Vercel serverless function (which keeps
 the database token server-side), so the table is always current. A **Sync now**

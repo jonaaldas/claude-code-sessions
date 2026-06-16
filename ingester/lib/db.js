@@ -22,14 +22,33 @@ export function getClient() {
 
 export async function ensureSchema(client) {
   const schema = fs.readFileSync(path.join(__dirname, "..", "schema.sql"), "utf8");
-  for (const stmt of schema.split(";")) {
-    const s = stmt.trim();
-    if (s) await client.execute(s);
+  const stmts = schema.split(";").map((s) => s.trim()).filter(Boolean);
+
+  // Create the table first so migrations can run against it, then apply
+  // migrations, then everything else (indexes that may reference new columns).
+  for (const s of stmts) if (/^CREATE TABLE/i.test(s)) await client.execute(s);
+  await migrate(client);
+  for (const s of stmts) if (!/^CREATE TABLE/i.test(s)) await client.execute(s);
+}
+
+// Additive, idempotent migrations for DBs created before a column existed.
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so we attempt and swallow the
+// duplicate-column error.
+async function migrate(client) {
+  const adds = [
+    "ALTER TABLE sessions ADD COLUMN source TEXT DEFAULT 'claude'",
+  ];
+  for (const sql of adds) {
+    try {
+      await client.execute(sql);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
   }
 }
 
 const COLS = [
-  "id", "title", "summary", "first_prompt", "last_prompt", "cwd", "repo",
+  "id", "source", "title", "summary", "first_prompt", "last_prompt", "cwd", "repo",
   "git_branch", "pr_url", "pr_number", "pr_repository", "message_count",
   "version", "started_at", "ended_at", "updated_at", "transcript_path",
 ];

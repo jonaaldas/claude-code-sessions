@@ -1,5 +1,6 @@
 export interface Session {
   id: string;
+  source: "claude" | "codex" | null;
   title: string | null;
   summary: string | null;
   first_prompt: string | null;

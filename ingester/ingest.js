@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 /**
- * Ingest Claude Code sessions into Turso.
+ * Ingest Claude Code and Codex CLI sessions into Turso.
  *
  * Usage:
- *   node ingest.mjs <transcript.jsonl>   ingest one file
- *   node ingest.mjs --all                ingest every session under ~/.claude/projects
+ *   node ingest.mjs <transcript.jsonl>   ingest one file (agent auto-detected)
+ *   node ingest.mjs --all                ingest every Claude + Codex session
+ *   node ingest.mjs --all --claude       only ~/.claude/projects
+ *   node ingest.mjs --all --codex        only ~/.codex/sessions
  *   node ingest.mjs --all --dry          parse + print, no DB writes (no Turso needed)
  *
  * The Stop hook also pipes the hook JSON ({transcript_path,...}) on stdin; if no
  * path arg is given and stdin has data, we read transcript_path from there.
  */
-import { parseSession } from "./lib/parse.js";
-import { allTranscripts } from "./lib/discover.js";
+import { allTranscripts, allCodexTranscripts } from "./lib/discover.js";
+import { parseAny } from "./lib/parse-any.js";
 
 const args = process.argv.slice(2);
 const dry = args.includes("--dry");
 const all = args.includes("--all");
+const onlyClaude = args.includes("--claude");
+const onlyCodex = args.includes("--codex");
 const fileArgs = args.filter((a) => !a.startsWith("--"));
 
 async function readStdinPath() {
@@ -35,7 +39,8 @@ async function readStdinPath() {
 async function main() {
   let targets = [];
   if (all) {
-    targets = allTranscripts();
+    if (!onlyCodex) targets.push(...allTranscripts());
+    if (!onlyClaude) targets.push(...allCodexTranscripts());
   } else if (fileArgs.length) {
     targets = fileArgs;
   } else {
@@ -50,15 +55,15 @@ async function main() {
 
   const rows = [];
   for (const t of targets) {
-    const row = parseSession(t);
+    const row = parseAny(t);
     if (row) rows.push(row);
   }
 
   if (dry) {
     for (const r of rows) {
       console.log(
-        `${(r.repo || "?").padEnd(22)} ${(r.git_branch || "?").padEnd(14)} ` +
-        `msgs:${String(r.message_count).padStart(4)}  ${r.id}\n  → ${r.title || r.last_prompt || "(no title)"}`
+        `${(r.source || "?").padEnd(7)} ${(r.repo || "?").padEnd(22)} ${(r.git_branch || "?").padEnd(14)} ` +
+        `msgs:${String(r.message_count).padStart(4)}  ${r.id}\n  → ${r.title || r.last_prompt || r.first_prompt || "(no title)"}`
       );
     }
     console.log(`\n${rows.length} session(s) parsed (dry run, no DB writes).`);

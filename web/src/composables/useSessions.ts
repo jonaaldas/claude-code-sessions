@@ -7,6 +7,7 @@ export function useSessions() {
   const error = ref<string | null>(null);
   const configured = ref(true);
   const restricted = ref(false);
+  const authed = ref(false);
   const lastSynced = ref<string | null>(null);
 
   async function load(fresh = false) {
@@ -24,6 +25,7 @@ export function useSessions() {
       sessions.value = data.sessions ?? [];
       configured.value = data.configured !== false;
       restricted.value = data.restricted === true;
+      authed.value = data.authed === true;
       lastSynced.value = data.lastSynced ?? null;
     } catch (e: any) {
       error.value = e.message ?? String(e);
@@ -32,5 +34,5 @@ export function useSessions() {
     }
   }
 
-  return { sessions, loading, error, configured, restricted, lastSynced, load };
+  return { sessions, loading, error, configured, restricted, authed, lastSynced, load };
 }

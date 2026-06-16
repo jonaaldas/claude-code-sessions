@@ -28,6 +28,7 @@ export function parseSession(file) {
 
   const row = {
     id: null,
+    source: "claude",
     title: null,
     summary: null,
     last_prompt: null,
@@ -133,7 +134,8 @@ function extractText(message) {
 
 // Patterns for credentials that can leak into prompts. Anything matched is
 // replaced with [redacted] before it ever reaches the DB / public dashboard.
-const SECRET_PATTERNS = [
+// Exported so the Codex parser applies the exact same redaction.
+export const SECRET_PATTERNS = [
   /\bcfut_[A-Za-z0-9_-]{20,}/g, // Cloudflare API tokens
   /\bv1\.0-[A-Za-z0-9_-]{20,}/g, // Cloudflare origin/global tokens
   /\bsk-[A-Za-z0-9_-]{20,}/g, // OpenAI / Anthropic style
@@ -144,13 +146,13 @@ const SECRET_PATTERNS = [
   /\b(?:ghp|glpat|npm_)[A-Za-z0-9_-]{20,}/g, // misc PATs
 ];
 
-function redact(s) {
+export function redact(s) {
   let out = String(s);
   for (const re of SECRET_PATTERNS) out = out.replace(re, "[redacted]");
   return out;
 }
 
-function clip(s, n) {
+export function clip(s, n) {
   s = redact(String(s)).replace(/\s+/g, " ").trim();
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }

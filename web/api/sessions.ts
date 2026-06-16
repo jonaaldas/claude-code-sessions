@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@libsql/client";
+import { isAuthed } from "./_auth.js";
 
 // Read-only endpoint: returns all sessions, newest first.
 // Supports ?q= (search), ?repo=, ?branch= filters.
@@ -41,18 +42,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // explicitly allowlisted via the PUBLIC_REPOS env var (comma-separated).
   // Fails CLOSED: if PUBLIC_REPOS is unset, the public site shows nothing.
   // Locally (no VERCEL env — e.g. serve-local.js / vite) everything is visible.
-  const isPublicDeploy = !!process.env.VERCEL;
+  // A valid auth cookie (single owner login) lifts the gate entirely.
+  const authed = isAuthed(req);
+  const gated = !!process.env.VERCEL && !authed;
   const allowed = (process.env.PUBLIC_REPOS || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  if (isPublicDeploy) {
+  if (gated) {
     if (allowed.length === 0) {
       res.setHeader("Cache-Control", "no-store");
       res.status(200).json({
         sessions: [],
         configured: true,
         restricted: true,
+        authed: false,
         lastSynced: null,
         total: 0,
       });
@@ -64,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const sql =
-    `SELECT id, title, summary, first_prompt, last_prompt, cwd, repo, git_branch,
+    `SELECT id, source, title, summary, first_prompt, last_prompt, cwd, repo, git_branch,
             pr_url, pr_number, message_count, version, started_at, ended_at, updated_at
      FROM sessions` +
     (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
@@ -76,14 +80,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const meta = await client.execute(
       "SELECT MAX(updated_at) AS last_synced, COUNT(*) AS total FROM sessions"
     );
+    // Authed responses contain private repos — they must NEVER be shared in the
+    // edge cache (the CDN cache key ignores cookies). Only the public, gated
+    // response is safe to cache across visitors.
     res.setHeader(
       "Cache-Control",
-      fresh ? "no-store" : "s-maxage=10, stale-while-revalidate=59"
+      authed || fresh ? "private, no-store" : "s-maxage=10, stale-while-revalidate=59"
     );
     res.status(200).json({
       sessions: result.rows,
       configured: true,
-      restricted: isPublicDeploy,
+      restricted: gated,
+      authed,
       lastSynced: meta.rows[0]?.last_synced ?? null,
       total: result.rows.length,
     });
