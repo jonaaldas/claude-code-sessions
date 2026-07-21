@@ -82,7 +82,7 @@ async function main() {
       console.error(`Failed to upsert ${r.id}: ${e.message}`);
     }
   }
-  console.log(`Ingested ${ok}/${rows.length} session(s) into Turso.`);
+  console.log(`Ingested ${ok}/${rows.length} session(s) into MySQL.`);
 }
 
 main().catch((e) => {

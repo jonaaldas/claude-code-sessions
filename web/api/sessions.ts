@@ -1,20 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createClient } from "@libsql/client";
+import { dbQuery } from "./_db.js";
 import { isAuthed } from "./_auth.js";
 
 // Read-only endpoint: returns all sessions, newest first.
 // Supports ?q= (search), ?repo=, ?branch= filters.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  if (!url) {
-    // Site is deployed but Turso isn't wired yet — render an intentional
+  if (!process.env.DATABASE_URL) {
+    // Site is deployed but the database isn't wired yet — render an intentional
     // "connect your database" state rather than a 500.
     res.status(200).json({ sessions: [], configured: false });
     return;
   }
-
-  const client = createClient({ url, authToken });
 
   const q = (req.query.q as string) || "";
   const repo = (req.query.repo as string) || "";
@@ -75,9 +71,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ` ORDER BY ended_at DESC LIMIT 1000`;
 
   try {
-    const result = await client.execute({ sql, args });
+    const result = await dbQuery(sql, args);
     // lastSynced = the most recent ingest write across all sessions.
-    const meta = await client.execute(
+    const meta = await dbQuery(
       "SELECT MAX(updated_at) AS last_synced, COUNT(*) AS total FROM sessions"
     );
     // Authed responses contain private repos — they must NEVER be shared in the

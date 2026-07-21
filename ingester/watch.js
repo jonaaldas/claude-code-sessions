@@ -3,7 +3,7 @@
  * Background watcher — collects session metadata continuously.
  *
  * Watches ~/.claude/projects and ~/.codex/sessions for transcript writes and
- * upserts the affected session into Turso (debounced per file). On startup it
+ * upserts the affected session into MySQL (debounced per file). On startup it
  * backfills every existing session once. Designed to run as a launchd service.
  */
 import chokidar from "chokidar";

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createClient } from "@libsql/client";
+import { dbQuery } from "./_db.js";
 import {
   hashPassword,
   verifyPassword,
@@ -20,8 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const secret = process.env.AUTH_SECRET;
-  const url = process.env.TURSO_DATABASE_URL;
-  if (!secret || !url) {
+  if (!secret || !process.env.DATABASE_URL) {
     res.status(500).json({ error: "Auth is not configured on the server." });
     return;
   }
@@ -34,14 +33,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
-
   let storedHash = DUMMY_HASH;
   try {
-    const r = await client.execute({
-      sql: "SELECT password_hash FROM auth_users WHERE email = :email",
-      args: { email },
-    });
+    const r = await dbQuery(
+      "SELECT password_hash FROM auth_users WHERE email = :email",
+      { email }
+    );
     if (r.rows[0]?.password_hash) storedHash = String(r.rows[0].password_hash);
   } catch {
     /* table may not exist yet — fall through to a guaranteed-fail compare */

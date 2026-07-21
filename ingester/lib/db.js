@@ -1,4 +1,4 @@
-import { createClient } from "@libsql/client";
+import mysql from "mysql2/promise";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,40 +9,54 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env from the ingester root regardless of cwd (hooks run from anywhere).
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
+let pool;
+
+// Returns a shared mysql2 pool. Reused across calls so the long-running watcher
+// keeps a small, bounded set of connections rather than reconnecting per write.
 export function getClient() {
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
+  const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
-      "TURSO_DATABASE_URL is not set. Run ./setup-db.sh after `turso auth login`."
+      "DATABASE_URL is not set. Add mysql://user:pass@host:port/db to ingester/.env"
     );
   }
-  return createClient({ url, authToken });
+  if (!pool) {
+    pool = mysql.createPool({
+      uri: url,
+      namedPlaceholders: true,
+      connectionLimit: 5,
+      waitForConnections: true,
+      enableKeepAlive: true,
+    });
+  }
+  return pool;
 }
 
 export async function ensureSchema(client) {
   const schema = fs.readFileSync(path.join(__dirname, "..", "schema.sql"), "utf8");
-  const stmts = schema.split(";").map((s) => s.trim()).filter(Boolean);
-
-  // Create the table first so migrations can run against it, then apply
-  // migrations, then everything else (indexes that may reference new columns).
-  for (const s of stmts) if (/^CREATE TABLE/i.test(s)) await client.execute(s);
+  // Strip line comments so `;`-splitting isn't confused by "--" text, then run
+  // each CREATE TABLE (indexes are inline, so no separate index step needed).
+  const cleaned = schema
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("--"))
+    .join("\n");
+  const stmts = cleaned.split(";").map((s) => s.trim()).filter(Boolean);
+  for (const s of stmts) await client.query(s);
   await migrate(client);
-  for (const s of stmts) if (!/^CREATE TABLE/i.test(s)) await client.execute(s);
 }
 
 // Additive, idempotent migrations for DBs created before a column existed.
-// SQLite has no "ADD COLUMN IF NOT EXISTS", so we attempt and swallow the
-// duplicate-column error.
+// MySQL has no "ADD COLUMN IF NOT EXISTS", so we attempt and swallow the
+// duplicate-column error (ER_DUP_FIELDNAME).
 async function migrate(client) {
   const adds = [
-    "ALTER TABLE sessions ADD COLUMN source TEXT DEFAULT 'claude'",
+    "ALTER TABLE sessions ADD COLUMN source VARCHAR(32) DEFAULT 'claude'",
   ];
   for (const sql of adds) {
     try {
-      await client.execute(sql);
+      await client.query(sql);
     } catch (e) {
-      if (!/duplicate column name/i.test(e.message)) throw e;
+      if (e.code !== "ER_DUP_FIELDNAME" && !/duplicate column/i.test(e.message)) throw e;
     }
   }
 }
@@ -56,12 +70,14 @@ const COLS = [
 export async function upsertSession(client, row) {
   const data = { ...row, updated_at: new Date().toISOString() };
   const placeholders = COLS.map(() => "?").join(", ");
+  // MySQL 8 row-alias upsert: `AS new ... = new.col` (the modern replacement
+  // for the deprecated VALUES() form, and the analogue of SQLite's `excluded`).
   const updates = COLS.filter((c) => c !== "id")
-    .map((c) => `${c}=excluded.${c}`)
+    .map((c) => `${c}=new.${c}`)
     .join(", ");
-  await client.execute({
-    sql: `INSERT INTO sessions (${COLS.join(", ")}) VALUES (${placeholders})
-          ON CONFLICT(id) DO UPDATE SET ${updates}`,
-    args: COLS.map((c) => data[c] ?? null),
-  });
+  await client.query(
+    `INSERT INTO sessions (${COLS.join(", ")}) VALUES (${placeholders}) AS new
+     ON DUPLICATE KEY UPDATE ${updates}`,
+    COLS.map((c) => data[c] ?? null)
+  );
 }

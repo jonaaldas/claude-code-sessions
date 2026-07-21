@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 /**
  * Offline preview server. Serves the built `dist/` plus a live /api/sessions
- * backed by any libsql URL (including a local `file:` SQLite db). Lets you see
- * the dashboard without Vercel or Turso.
+ * backed by the MySQL registry. Lets you see the dashboard without Vercel.
  *
- *   TURSO_DATABASE_URL="file:/tmp/sessions.db" node scripts/serve-local.mjs
+ *   DATABASE_URL="mysql://user:pass@host:3306/claude_sessions" node scripts/serve-local.js
  */
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createClient } from "@libsql/client";
+import mysql from "mysql2/promise";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(__dirname, "..", "dist");
 const PORT = process.env.PORT || 4321;
 
-const client = createClient({
-  url: process.env.TURSO_DATABASE_URL || "file:/tmp/sessions.db",
-  authToken: process.env.TURSO_AUTH_TOKEN,
+const pool = mysql.createPool({
+  uri: process.env.DATABASE_URL,
+  namedPlaceholders: true,
+  connectionLimit: 5,
 });
 
 const MIME = {
@@ -34,13 +34,13 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/sessions") {
     try {
-      const r = await client.execute(
+      const [rows] = await pool.query(
         `SELECT id, source, title, summary, first_prompt, last_prompt, cwd, repo, git_branch,
                 pr_url, pr_number, message_count, version, started_at, ended_at, updated_at
          FROM sessions ORDER BY ended_at DESC LIMIT 1000`
       );
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ sessions: r.rows }));
+      res.end(JSON.stringify({ sessions: rows }));
     } catch (e) {
       res.writeHead(500, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));

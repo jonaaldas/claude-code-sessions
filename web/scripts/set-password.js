@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Provision (or update) the single login user in Turso.
+ * Provision (or update) the single login user in MySQL.
  *
  *   node scripts/set-password.js you@example.com
  *     → prompts for the password (hidden), then upserts the scrypt hash.
@@ -8,15 +8,15 @@
  *   node scripts/set-password.js you@example.com 'the-password'
  *     → non-interactive (avoid: leaks into shell history).
  *
- * Reads TURSO_DATABASE_URL / TURSO_AUTH_TOKEN from web/.env. The hashing scheme
- * ("salt:hash" hex via scrypt) matches api/_auth.ts exactly.
+ * Reads DATABASE_URL from web/.env. The hashing scheme ("salt:hash" hex via
+ * scrypt) matches api/_auth.ts exactly.
  */
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import { createClient } from "@libsql/client";
+import mysql from "mysql2/promise";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,9 +61,9 @@ function promptHidden(question) {
 
 async function main() {
   loadEnv();
-  const url = process.env.TURSO_DATABASE_URL;
+  const url = process.env.DATABASE_URL;
   if (!url) {
-    console.error("TURSO_DATABASE_URL not set (expected in web/.env).");
+    console.error("DATABASE_URL not set (expected in web/.env).");
     process.exit(1);
   }
 
@@ -78,20 +78,22 @@ async function main() {
     process.exit(1);
   }
 
-  const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
-  await client.execute(`
+  const pool = mysql.createPool({ uri: url, namedPlaceholders: true, connectionLimit: 2 });
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS auth_users (
-      email         TEXT PRIMARY KEY,
+      email         VARCHAR(255) NOT NULL,
       password_hash TEXT NOT NULL,
-      created_at    TEXT
-    )
+      created_at    VARCHAR(40),
+      PRIMARY KEY (email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  await client.execute({
-    sql: `INSERT INTO auth_users (email, password_hash, created_at)
-          VALUES (:email, :hash, :now)
-          ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash`,
-    args: { email, hash: hashPassword(password), now: new Date().toISOString() },
-  });
+  await pool.query(
+    `INSERT INTO auth_users (email, password_hash, created_at)
+     VALUES (:email, :hash, :now) AS new
+     ON DUPLICATE KEY UPDATE password_hash = new.password_hash`,
+    { email, hash: hashPassword(password), now: new Date().toISOString() }
+  );
+  await pool.end();
 
   console.log(`✓ Login set for ${email}. You can now log in on the dashboard.`);
 }

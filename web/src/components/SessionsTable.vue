@@ -19,11 +19,12 @@ defineProps<{ sessions: Session[]; loading: boolean }>();
 
 const copiedId = ref<string | null>(null);
 
-// Each agent has its own resume invocation.
+// Each agent has its own resume invocation. Uses the user's shell aliases
+// (~/.zshrc): `cld`=claude --dangerously-skip-permissions, `cy`=codex --yolo.
 function resumeCommand(s: Session): string {
   return s.source === "codex"
-    ? `codex resume ${s.id}`
-    : `claude --resume ${s.id}`;
+    ? `cy resume ${s.id}`
+    : `cld --resume ${s.id}`;
 }
 
 async function copyResume(s: Session) {
