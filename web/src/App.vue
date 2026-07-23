@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { relativeTime } from "@/lib/format";
-import { RefreshCw, Terminal, Lock, LogOut } from "lucide-vue-next";
+import { RefreshCw, Terminal, Lock, LogOut, GitBranch, X } from "lucide-vue-next";
 
 const { sessions, loading, error, configured, restricted, authed, lastSynced, load } =
   useSessions();
@@ -16,6 +16,13 @@ const { submitting, error: authError, login, logout } = useAuth();
 const query = ref("");
 const activeRepo = ref<string | null>(null);
 const activeAgent = ref<"claude" | "codex" | null>(null);
+const activeBranch = ref<string | null>(null);
+const groupByBranch = ref(false);
+
+// Clicking a branch in the table toggles it as a filter.
+function selectBranch(branch: string) {
+  activeBranch.value = activeBranch.value === branch ? null : branch;
+}
 
 const showLogin = ref(false);
 const email = ref("");
@@ -67,8 +74,9 @@ const filtered = computed(() => {
   return sessions.value.filter((s) => {
     if (activeRepo.value && s.repo !== activeRepo.value) return false;
     if (activeAgent.value && (s.source ?? "claude") !== activeAgent.value) return false;
+    if (activeBranch.value && s.git_branch !== activeBranch.value) return false;
     if (!q) return true;
-    return [s.title, s.summary, s.last_prompt, s.first_prompt, s.repo, s.git_branch, s.source, s.id]
+    return [s.title, s.summary, s.description, s.last_prompt, s.first_prompt, s.repo, s.git_branch, s.source, s.id]
       .filter(Boolean)
       .some((f) => (f as string).toLowerCase().includes(q));
   });
@@ -183,6 +191,25 @@ const filtered = computed(() => {
           {{ repo }} <span class="opacity-60">{{ n }}</span>
         </Badge>
       </div>
+      <Badge
+        v-if="activeBranch"
+        variant="default"
+        class="cursor-pointer"
+        title="Clear branch filter"
+        @click="activeBranch = null"
+      >
+        <GitBranch class="size-3" />
+        {{ activeBranch }}
+        <X class="size-3" />
+      </Badge>
+      <Button
+        :variant="groupByBranch ? 'default' : 'outline'"
+        size="sm"
+        @click="groupByBranch = !groupByBranch"
+      >
+        <GitBranch class="size-3.5" />
+        Group by branch
+      </Button>
       <span class="ml-auto text-sm text-muted-foreground">
         {{ filtered.length }} session{{ filtered.length === 1 ? "" : "s" }}
       </span>
@@ -200,16 +227,21 @@ const filtered = computed(() => {
       class="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm"
     >
       <strong>Database not connected yet.</strong>
-      Set <code>TURSO_DATABASE_URL</code> and <code>TURSO_AUTH_TOKEN</code> in this
-      project's Vercel environment variables, then redeploy. Run
-      <code>ingester/setup-db.sh</code> locally to create the Turso DB and get
-      these values.
+      Set <code>DATABASE_URL</code> (mysql://user:pass@host:3306/db) in this
+      project's Vercel environment variables, then redeploy. The ingester
+      creates the schema automatically on first run.
     </div>
 
-    <SessionsTable v-if="configured || loading" :sessions="filtered" :loading="loading" />
+    <SessionsTable
+      v-if="configured || loading"
+      :sessions="filtered"
+      :loading="loading"
+      :group-by-branch="groupByBranch"
+      @select-branch="selectBranch"
+    />
 
     <footer class="mt-8 text-center text-xs text-muted-foreground">
-      Collected automatically on session end · stored in Turso
+      Collected automatically on session end · stored in self-hosted MySQL
     </footer>
   </div>
 </template>

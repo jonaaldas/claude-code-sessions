@@ -46,7 +46,7 @@ export function parseSession(file) {
     transcript_path: file,
   };
 
-  let firstUserText = null;
+  const userTexts = []; // real (non-noise) user prompts, in order
 
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
@@ -85,10 +85,8 @@ export function parseSession(file) {
         }
         if (o.type === "user" && !o.isMeta) {
           row.message_count++;
-          if (!firstUserText) {
-            const t = extractText(o.message);
-            if (t && !t.startsWith("<local-command")) firstUserText = t;
-          }
+          const t = extractText(o.message);
+          if (t && !isNoisePrompt(t)) userTexts.push(t);
         }
         if (o.type === "assistant") row.message_count++;
         break;
@@ -98,8 +96,19 @@ export function parseSession(file) {
 
   if (!row.id) return null;
 
-  row.first_prompt = firstUserText ? clip(firstUserText, 500) : null;
-  row.last_prompt = row.last_prompt ? clip(row.last_prompt, 500) : null;
+  // Sessions spawned by our own describer (lib/describe.js) tag their prompt
+  // with a sentinel — never ingest them, or the watcher would loop on itself.
+  if (userTexts.length && userTexts[0].trimStart().startsWith("session-describer:")) {
+    return null;
+  }
+
+  row.first_prompt = userTexts.length ? clip(userTexts[0], 500) : null;
+  // Claude's last-prompt record can itself be slash-command noise; prefer the
+  // last real user prompt in that case.
+  const cleanLast = userTexts.length ? userTexts[userTexts.length - 1] : null;
+  const recordedLast = row.last_prompt && !isNoisePrompt(row.last_prompt) ? row.last_prompt : null;
+  row.last_prompt = recordedLast || cleanLast ? clip(recordedLast || cleanLast, 500) : null;
+  row._prompts = samplePrompts(userTexts);
   if (row.title) row.title = redact(row.title);
   if (row.summary) row.summary = redact(row.summary);
 
@@ -119,6 +128,34 @@ export function parseSession(file) {
   }
 
   return row;
+}
+
+// Prompts that are tooling artifacts, not something the user "said" — slash
+// command invocations, injected reminders, interrupt markers. These made
+// first_prompt useless as a description (e.g. "<command-name>/usage…").
+const NOISE_PREFIXES = [
+  "<command-name>",
+  "<local-command",
+  "<system-reminder",
+  "<task-notification",
+  "[Request interrupted",
+  "Caveat: the messages below",
+];
+
+export function isNoisePrompt(t) {
+  const s = String(t).trimStart();
+  return NOISE_PREFIXES.some((p) => s.startsWith(p));
+}
+
+// A small, order-preserving sample of the session's real prompts (first two +
+// last two) used as input for the AI describer. Kept off the DB row (leading
+// underscore — not in the upsert column list).
+export function samplePrompts(userTexts) {
+  const picked =
+    userTexts.length <= 4
+      ? userTexts
+      : [...userTexts.slice(0, 2), ...userTexts.slice(-2)];
+  return picked.map((t) => clip(t, 300));
 }
 
 function extractText(message) {

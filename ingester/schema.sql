@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   source          VARCHAR(32) DEFAULT 'claude', -- which agent produced it: 'claude' | 'codex'
   title           TEXT,               -- Claude's own generated session title
   summary         TEXT,               -- compaction summary, when present
+  description     TEXT,               -- AI one-liner (lib/describe.js), the row's main label
+  described_message_count INT,        -- message_count when description was generated
   first_prompt    TEXT,               -- first real user prompt (context)
   last_prompt     TEXT,               -- most recent user prompt
   cwd             TEXT,               -- working directory

@@ -3,6 +3,7 @@ export interface Session {
   source: "claude" | "codex" | null;
   title: string | null;
   summary: string | null;
+  description: string | null;
   first_prompt: string | null;
   last_prompt: string | null;
   cwd: string | null;

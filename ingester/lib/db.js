@@ -51,6 +51,8 @@ export async function ensureSchema(client) {
 async function migrate(client) {
   const adds = [
     "ALTER TABLE sessions ADD COLUMN source VARCHAR(32) DEFAULT 'claude'",
+    "ALTER TABLE sessions ADD COLUMN description TEXT",
+    "ALTER TABLE sessions ADD COLUMN described_message_count INT",
   ];
   for (const sql of adds) {
     try {
@@ -62,10 +64,15 @@ async function migrate(client) {
 }
 
 const COLS = [
-  "id", "source", "title", "summary", "first_prompt", "last_prompt", "cwd", "repo",
+  "id", "source", "title", "summary", "description", "described_message_count",
+  "first_prompt", "last_prompt", "cwd", "repo",
   "git_branch", "pr_url", "pr_number", "pr_repository", "message_count",
   "version", "started_at", "ended_at", "updated_at", "transcript_path",
 ];
+
+// The describer only fills these when it (re)generates; on every other ingest
+// they arrive null and must not clobber the stored value.
+const KEEP_IF_NULL = new Set(["description", "described_message_count"]);
 
 export async function upsertSession(client, row) {
   const data = { ...row, updated_at: new Date().toISOString() };
@@ -73,7 +80,7 @@ export async function upsertSession(client, row) {
   // MySQL 8 row-alias upsert: `AS new ... = new.col` (the modern replacement
   // for the deprecated VALUES() form, and the analogue of SQLite's `excluded`).
   const updates = COLS.filter((c) => c !== "id")
-    .map((c) => `${c}=new.${c}`)
+    .map((c) => (KEEP_IF_NULL.has(c) ? `${c}=COALESCE(new.${c}, sessions.${c})` : `${c}=new.${c}`))
     .join(", ");
   await client.query(
     `INSERT INTO sessions (${COLS.join(", ")}) VALUES (${placeholders}) AS new

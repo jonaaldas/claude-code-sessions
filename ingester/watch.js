@@ -15,6 +15,7 @@ import {
 } from "./lib/discover.js";
 import { parseAny } from "./lib/parse-any.js";
 import { getClient, ensureSchema, upsertSession } from "./lib/db.js";
+import { maybeDescribe } from "./lib/describe.js";
 
 const DEBOUNCE_MS = 4000;
 
@@ -27,6 +28,7 @@ async function ingest(file) {
   const row = parseAny(file);
   if (!row) return;
   try {
+    await maybeDescribe(client, row);
     await upsertSession(client, row);
     log(`upserted ${row.repo}/${row.git_branch} ${row.id}`);
   } catch (e) {

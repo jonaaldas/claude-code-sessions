@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { clip, redact } from "./parse.js";
+import { clip, redact, samplePrompts } from "./parse.js";
 
 /**
  * Parse a single Codex CLI "rollout" transcript (.jsonl) into the same flat row
@@ -106,6 +106,7 @@ export function parseCodexSession(file) {
 
   row.first_prompt = userTexts.length ? clip(userTexts[0], 500) : null;
   row.last_prompt = userTexts.length ? clip(userTexts[userTexts.length - 1], 500) : null;
+  row._prompts = samplePrompts(userTexts);
 
   // Mirror the Claude parser: repo label is the cwd basename so the same
   // project groups together regardless of which agent produced the session.

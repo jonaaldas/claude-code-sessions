@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const args: Record<string, string> = {};
   if (q) {
     where.push(
-      "(title LIKE :q OR last_prompt LIKE :q OR first_prompt LIKE :q OR repo LIKE :q OR git_branch LIKE :q)"
+      "(title LIKE :q OR description LIKE :q OR last_prompt LIKE :q OR first_prompt LIKE :q OR repo LIKE :q OR git_branch LIKE :q)"
     );
     args.q = `%${q}%`;
   }
@@ -64,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const sql =
-    `SELECT id, source, title, summary, first_prompt, last_prompt, cwd, repo, git_branch,
+    `SELECT id, source, title, summary, description, first_prompt, last_prompt, cwd, repo, git_branch,
             pr_url, pr_number, message_count, version, started_at, ended_at, updated_at
      FROM sessions` +
     (where.length ? ` WHERE ${where.join(" AND ")}` : "") +

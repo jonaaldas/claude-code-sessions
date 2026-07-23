@@ -7,7 +7,8 @@
  *   node ingest.mjs --all                ingest every Claude + Codex session
  *   node ingest.mjs --all --claude       only ~/.claude/projects
  *   node ingest.mjs --all --codex        only ~/.codex/sessions
- *   node ingest.mjs --all --dry          parse + print, no DB writes (no Turso needed)
+ *   node ingest.mjs --all --dry          parse + print, no DB writes (no DB needed)
+ *   node ingest.mjs --all --no-describe  skip AI description generation (also: DESCRIBE=0)
  *
  * The Stop hook also pipes the hook JSON ({transcript_path,...}) on stdin; if no
  * path arg is given and stdin has data, we read transcript_path from there.
@@ -20,6 +21,7 @@ const dry = args.includes("--dry");
 const all = args.includes("--all");
 const onlyClaude = args.includes("--claude");
 const onlyCodex = args.includes("--codex");
+const noDescribe = args.includes("--no-describe");
 const fileArgs = args.filter((a) => !a.startsWith("--"));
 
 async function readStdinPath() {
@@ -71,11 +73,13 @@ async function main() {
   }
 
   const { getClient, ensureSchema, upsertSession } = await import("./lib/db.js");
+  const { maybeDescribe } = await import("./lib/describe.js");
   const client = getClient();
   await ensureSchema(client);
   let ok = 0;
   for (const r of rows) {
     try {
+      if (!noDescribe) await maybeDescribe(client, r);
       await upsertSession(client, r);
       ok++;
     } catch (e) {
@@ -83,6 +87,9 @@ async function main() {
     }
   }
   console.log(`Ingested ${ok}/${rows.length} session(s) into MySQL.`);
+  // The pool's keep-alive sockets hold the event loop open; close it so the
+  // one-shot CLI (stop hook, hourly sync) actually exits.
+  await client.end();
 }
 
 main().catch((e) => {
