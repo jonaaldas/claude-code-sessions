@@ -34,13 +34,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     args.branch = branch;
   }
 
-  // Privacy gate. On the public Vercel deployment we only ever expose repos
+  // Privacy gate. On public production deployments we only ever expose repos
   // explicitly allowlisted via the PUBLIC_REPOS env var (comma-separated).
   // Fails CLOSED: if PUBLIC_REPOS is unset, the public site shows nothing.
-  // Locally (no VERCEL env — e.g. serve-local.js / vite) everything is visible.
+  // Local development (not production or Vercel) shows everything.
   // A valid auth cookie (single owner login) lifts the gate entirely.
   const authed = isAuthed(req);
-  const gated = !!process.env.VERCEL && !authed;
+  const gated = (process.env.NODE_ENV === "production" || !!process.env.VERCEL) && !authed;
   const allowed = (process.env.PUBLIC_REPOS || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())

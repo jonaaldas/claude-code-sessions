@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:container": "npm run build && npm run build:server",
+    "start": "node server.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

@@ -1,68 +1,57 @@
-# Deploying the dashboard to session-claude.aldas.dev
+# Deploying session-claude.aldas.dev
 
-Prerequisites: the Turso DB exists (`ingester/setup-db.sh` has run) and you have
-its `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`.
+Production runs as the `session-claude` application in the `session-AI` project
+on Dokploy. GitHub Actions builds the Docker image; the VPS only pulls and runs
+it. The previous Vercel project is retained.
 
-## 1. Log in to Vercel
+## Build and deploy
 
-The CLI login is interactive (opens a browser). In this Claude session, run it
-with the `!` prefix so the output lands here:
+Every push to `main` runs `.github/workflows/deploy.yml` on a GitHub runner:
 
-```
-! vercel login
-```
+1. Build `web/Dockerfile` for `linux/amd64`.
+2. Push `ghcr.io/jonaaldas/claude-code-sessions:latest` and a commit SHA tag.
+3. Call the Dokploy application webhook stored in the repository secret
+   `DOKPLOY_WEBHOOK_URL`.
 
-> Note: the bundled Vercel CLI is old (50.x). Upgrade for best results:
-> `npm i -g vercel@latest`
+The workflow can also be started manually. Dokploy's source must stay set to
+**Docker image**, with the existing GHCR pull credentials and automatic
+deployments enabled. Do not configure a GitHub, Dockerfile, or Nixpacks build
+on the VPS.
 
-## 2. Link the project
+## Runtime configuration
 
-```bash
-cd web
-vercel link          # create a new project, e.g. "claude-sessions"
-```
+Set these variables in the Dokploy application's environment, never in the
+image or client build:
 
-## 3. Add the Turso env vars (all environments)
+- `DATABASE_URL`: the SessionAI database credentials with internal Docker DNS
+  host `sessionai-session-sainmp` and port `3306`.
+- `PUBLIC_REPOS`: the existing public repository allowlist.
+- `AUTH_SECRET`: the dashboard's strong random cookie signing secret.
+- `NODE_ENV`: `production`.
+- `PORT`: `3000`.
 
-```bash
-vercel env add TURSO_DATABASE_URL production
-vercel env add TURSO_AUTH_TOKEN production
-# repeat for `preview` and `development` if you want `vercel dev` to work
-```
+The production Node server serves the built Vue SPA and reuses the existing
+`/api/sessions`, `/api/login`, and `/api/logout` handlers. Production keeps the
+public allowlist gate and Secure authentication cookies, including outside
+Vercel. A change to `AUTH_SECRET` requires signing in again.
 
-Paste the exact values `setup-db.sh` printed. The `/api/sessions` function reads
-these at request time.
+The app and database share `dokploy-network`. Do not point the web app at the
+public database port. The Mac ingester continues to use the Tailscale address
+on port `5657`; its configuration stays separate.
 
-## 4. Deploy
+## Domain and verification
 
-```bash
-vercel --prod
-```
+Cloudflare DNS directs `session-claude.aldas.dev` to the Dokploy server. The
+application's Dokploy domain routes to internal port `3000`, with HTTPS and
+the existing Traefik Let's Encrypt resolver.
 
-Vercel auto-detects Vite: builds with `npm run build`, serves `dist/`, and turns
-`api/sessions.ts` into a Node serverless function at `/api/sessions`.
+Verify the homepage and `/api/sessions` over HTTPS after deployment. Public
+database port `5657` is blocked on `eth0` by `/etc/block-public-ports.nft`, while
+the Mac's Tailscale connection remains available. `/healthz` is a container
+liveness endpoint; verify `/api/sessions` to check the database connection.
 
-## 5. Custom domain
+## Rollback
 
-```bash
-vercel domains add session-claude.aldas.dev
-```
-
-Then add the DNS record Vercel shows you on the `aldas.dev` zone:
-
-- If `aldas.dev` DNS is **on Vercel**: it's automatic.
-- Otherwise add a **CNAME** `session-claude` → `cname.vercel-dns.com`
-  (Vercel prints the exact target). Wait for propagation, then it's live.
-
-## Local dev with live functions
-
-```bash
-cd web
-vercel env pull .env.local    # pulls the Turso vars locally
-vercel dev                    # runs Vite + /api together on localhost:3000
-```
-
-## Updating
-
-Every `git push` to the linked repo (or `vercel --prod`) redeploys. The schema
-is created on first write, so no migration step is needed.
+Select a previously verified commit SHA image tag in Dokploy and redeploy the
+prebuilt image. Keep credentials and environment values out of logs. Do not
+change the database schema or data as part of deployment.

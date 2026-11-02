@@ -80,12 +80,12 @@ export function isAuthed(req: VercelRequest): boolean {
 
 export function sessionCookie(value: string, maxAgeSec: number): string {
   // HttpOnly so JS can't read it; Secure in prod; Lax is fine (same-site app).
-  const secure = process.env.VERCEL ? "; Secure" : "";
+  const secure = process.env.NODE_ENV === "production" || process.env.VERCEL ? "; Secure" : "";
   return `${COOKIE_NAME}=${value}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
 }
 
 // Readable companion to sessionCookie (no HttpOnly) — a UI hint only.
 export function hintCookie(maxAgeSec: number): string {
-  const secure = process.env.VERCEL ? "; Secure" : "";
+  const secure = process.env.NODE_ENV === "production" || process.env.VERCEL ? "; Secure" : "";
   return `${HINT_COOKIE}=1; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
 }

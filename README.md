@@ -18,9 +18,9 @@ shadcn-vue table so you can find and resume any past session with one click.
 | Ingestion | Node.js (ESM), `chokidar`, macOS `launchd` |
 | Descriptions | `claude -p --model haiku` (local CLI, cached per session) |
 | Database | MySQL 8 (`mysql2`), self-hosted |
-| API | Vercel Serverless Function (Node) |
+| API | Node server using the shared Vercel API handlers |
 | Frontend | Vite + Vue 3 + TypeScript + Tailwind v4 + shadcn-vue |
-| Hosting | Vercel (static SPA + `/api`) |
+| Hosting | Dokploy; GitHub Actions builds and publishes the GHCR image |
 
 ## How it works
 
@@ -108,7 +108,11 @@ migrations are applied automatically on every run.
 The Stop hook registers itself in `~/.claude/settings.json`, so every session you
 end from now on is ingested automatically.
 
-### 2. Dashboard (Vercel)
+### 2. Dashboard
+
+Production builds on GitHub Actions, publishes to GHCR, and runs on Dokploy
+beside MySQL. See [`DEPLOY.md`](./DEPLOY.md) for production configuration.
+The existing Vercel deployment remains available as a separate deployment option:
 
 ```bash
 cd web
