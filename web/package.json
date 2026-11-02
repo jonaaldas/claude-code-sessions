@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "build:server": "tsc -p tsconfig.server.json",
     "build:container": "npm run build && npm run build:server",
+    "test:auth": "node --test tests/login.test.mjs",
     "start": "node server.mjs"
   },
   "dependencies": {

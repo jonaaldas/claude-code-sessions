@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL:?required}
+      AUTH_DATABASE_URL: ${AUTH_DATABASE_URL:?required}
       AUTH_SECRET: ${AUTH_SECRET:?required}
       PUBLIC_REPOS: ${PUBLIC_REPOS:?required}
       NODE_ENV: production
