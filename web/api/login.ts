@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { authQuery } from "./_db.js";
+import { dbQuery } from "./_db.js";
 import {
   hashPassword,
   verifyPassword,
@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const secret = process.env.AUTH_SECRET;
-  if (!secret || !(process.env.AUTH_DATABASE_URL || process.env.DATABASE_URL)) {
+  if (!secret || !process.env.DATABASE_URL) {
     res.status(500).json({ error: "Auth is not configured on the server." });
     return;
   }
@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let storedHash = DUMMY_HASH;
   try {
-    const r = await authQuery(
+    const r = await dbQuery(
       "SELECT password_hash FROM auth_users WHERE email = :email",
       { email }
     );

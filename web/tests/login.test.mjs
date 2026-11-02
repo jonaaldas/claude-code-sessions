@@ -1,16 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { getPool, getAuthPool } from "../server-build/api/_db.js";
+import { getPool } from "../server-build/api/_db.js";
 import { hashPassword, verifyToken } from "../server-build/api/_auth.js";
 import login from "../server-build/api/login.js";
 
-test("login uses its authentication store and keeps credentials out of logs", async () => {
-  const keys = ["DATABASE_URL", "AUTH_DATABASE_URL", "AUTH_SECRET", "NODE_ENV"];
+test("login shares the application database and keeps credentials out of logs", async () => {
+  const keys = ["DATABASE_URL", "AUTH_SECRET", "NODE_ENV"];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   Object.assign(process.env, {
-    DATABASE_URL: "mysql://localhost:1/session_test",
-    AUTH_DATABASE_URL: "mysql://localhost:1/auth_test",
+    DATABASE_URL: "mysql://localhost:1/sessionai",
     AUTH_SECRET: randomBytes(48).toString("hex"),
     NODE_ENV: "production",
   });
@@ -21,9 +20,7 @@ test("login uses its authentication store and keeps credentials out of logs", as
   const info = console.info;
   const error = console.error;
   console.info = console.error = (line) => logs.push(line);
-  const sessions = getPool();
-  const auth = getAuthPool();
-  sessions.query = async () => { throw new Error("Login queried the session store"); };
+  const pool = getPool();
 
   const response = () => ({
     statusCode: 200,
@@ -38,8 +35,7 @@ test("login uses its authentication store and keeps credentials out of logs", as
   });
 
   try {
-    assert.notEqual(sessions, auth);
-    auth.query = async (_sql, args) => {
+    pool.query = async (_sql, args) => {
       assert.equal(args.email, email);
       return [[{ password_hash: stored }]];
     };
@@ -60,7 +56,7 @@ test("login uses its authentication store and keeps credentials out of logs", as
     assert.equal(invalid.statusCode, 401);
     assert.equal(invalid.headers["set-cookie"], undefined);
 
-    auth.query = async () => {
+    pool.query = async () => {
       throw Object.assign(new Error(password), { code: "ER_NO_SUCH_TABLE" });
     };
     const unavailable = response();
@@ -74,12 +70,10 @@ test("login uses its authentication store and keeps credentials out of logs", as
     assert.deepEqual(logs.map((line) => JSON.parse(line).outcome), [
       "success", "invalid_credentials", "database_error",
     ]);
-    delete process.env.AUTH_DATABASE_URL;
-    assert.equal(getAuthPool(), sessions, "Single-database deployments retain their existing behavior");
   } finally {
     console.info = info;
     console.error = error;
-    await Promise.all([sessions.end(), auth.end()]);
+    await pool.end();
     for (const key of keys) {
       if (previous[key] === undefined) delete process.env[key];
       else process.env[key] = previous[key];

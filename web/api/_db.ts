@@ -7,7 +7,6 @@
 import mysql from "mysql2/promise";
 
 let pool: mysql.Pool | undefined;
-let authPool: mysql.Pool | undefined;
 
 export function getPool(): mysql.Pool {
   if (!pool) {
@@ -20,31 +19,6 @@ export function getPool(): mysql.Pool {
     });
   }
   return pool;
-}
-
-// Production authentication can live in a different database from the active
-// session ingester. Keep the existing account hashes in their original store.
-// Deployments with one database retain the original behavior by default.
-export function getAuthPool(): mysql.Pool {
-  if (!process.env.AUTH_DATABASE_URL) return getPool();
-  if (!authPool) {
-    authPool = mysql.createPool({
-      uri: process.env.AUTH_DATABASE_URL,
-      namedPlaceholders: true,
-      connectionLimit: 2,
-      waitForConnections: true,
-      enableKeepAlive: true,
-    });
-  }
-  return authPool;
-}
-
-export async function authQuery(
-  sql: string,
-  args?: any[] | Record<string, any>
-): Promise<{ rows: any[] }> {
-  const [rows] = await getAuthPool().query(sql, args ?? []);
-  return { rows: rows as any[] };
 }
 
 // Thin wrapper mirroring the old libsql client's `.execute()` → `{ rows }`

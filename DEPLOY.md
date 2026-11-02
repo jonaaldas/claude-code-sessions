@@ -26,11 +26,9 @@ Set these variables in the Dokploy Compose environment, never in the
 image or client build:
 
 - `DATABASE_URL`: the SessionAI database credentials with internal Docker DNS
-  host `sessionai-session-sainmp` and port `3306`, selecting the active ingester's
-  `mysql` database for session reads.
-- `AUTH_DATABASE_URL`: a separate internal connection to `claude_sessions`,
-  where the original production login account lives. If unset, the API falls
-  back to `DATABASE_URL` for deployments that use one database.
+  host `sessionai-session-sainmp` and port `3306`, selecting `sessionai` for both
+  sessions and authentication. There is one connection pool and no separate
+  authentication database override.
 - `PUBLIC_REPOS`: the existing public repository allowlist.
 - `AUTH_SECRET`: the dashboard's strong random cookie signing secret.
 - `NODE_ENV`: `production`.
@@ -42,8 +40,9 @@ public allowlist gate and Secure authentication cookies, including outside
 Vercel. A change to `AUTH_SECRET` requires signing in again.
 
 The app and database share `dokploy-network`. Do not point the web app at the
-public database port. The Mac ingester continues to use the Tailscale address
-on port `5657`; its configuration stays separate.
+public database port. The Mac ingester selects the same `sessionai` database
+through Tailscale on port `5657`. Reload the watcher after changing its `.env`
+so its cached connection pool uses the new settings.
 
 ### Database history
 
@@ -53,9 +52,16 @@ The original production store, `claude_sessions`, was initialized July 21, 2026.
 The development/ingester store in `mysql` was initialized separately July 31.
 They contain separate login hashes and session histories; they are not replicas.
 The Dokploy migration initially copied the ingester connection for both login
-and session reads. Authentication now uses the original production account
-without changing either database or moving its data. Session reads continue to
-use the current ingester's dataset.
+and session reads. A temporary separate authentication connection restored
+access to the original production account.
+
+The November 2 consolidation created `sessionai` with 405 live sessions plus
+307 historical sessions missing from the live store, for 712 distinct sessions,
+and retained the original working authentication record. Existing live rows
+and their cached transcripts were preserved. Both source stores and their auth
+records remain intact for rollback; they must not be deleted without explicit
+approval. Never drop the `mysql` system schema. Restore-tested application-table
+backups and checksums are kept on the server under `/var/backups/sessionai/`.
 
 Login logs record only outcomes and database error codes, never credentials,
 email addresses, password hashes, cookies, or connection strings. Authentication
