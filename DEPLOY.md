@@ -31,6 +31,8 @@ image or client build:
   authentication database override.
 - `PUBLIC_REPOS`: the existing public repository allowlist.
 - `AUTH_SECRET`: the dashboard's strong random cookie signing secret.
+- `SESSION_API_KEY`: the independent bearer key for the [agent lookup API](docs/api.md).
+  Its protected Mac copy is `~/.secrets/session-claude-api.env`; do not print it.
 - `NODE_ENV`: `production`.
 - `PORT`: `3000`.
 

@@ -84,6 +84,9 @@ For every transcript under `~/.claude/projects/`:
 
 ## Repository layout
 
+Agent integrations can use the bearer-authenticated [session lookup API](docs/api.md)
+to search by branch, PR, or transcript keywords and fetch session metadata.
+
 ```
 ingester/   Node parser + Turso writer, the Stop hook, watcher, hourly sync
 web/        Vue dashboard + Vercel /api/sessions function

@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build:container && npm run test:auth
+RUN npm run build:container && npm run test:auth && npm run test:api
 
 FROM node:24-bookworm-slim AS dependencies
 WORKDIR /app

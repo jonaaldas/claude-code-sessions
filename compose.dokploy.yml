@@ -6,6 +6,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?required}
       AUTH_SECRET: ${AUTH_SECRET:?required}
+      SESSION_API_KEY: ${SESSION_API_KEY:?required}
       PUBLIC_REPOS: ${PUBLIC_REPOS:?required}
       NODE_ENV: production
       PORT: "3000"

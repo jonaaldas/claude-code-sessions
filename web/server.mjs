@@ -5,12 +5,15 @@ import { fileURLToPath } from "node:url";
 import sessions from "./server-build/api/sessions.js";
 import login from "./server-build/api/login.js";
 import logout from "./server-build/api/logout.js";
+import agentSearch from "./server-build/api/v1/sessions/search.js";
+import agentSession from "./server-build/api/v1/sessions/[id].js";
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), "dist");
 const routes = new Map([
   ["/api/sessions", sessions],
   ["/api/login", login],
   ["/api/logout", logout],
+  ["/api/v1/sessions/search", agentSearch],
 ]);
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -36,9 +39,14 @@ const server = createServer(async (req, res) => {
       res.json({ ok: true });
       return;
     }
-    const handler = routes.get(url.pathname);
+    const sessionMatch = /^\/api\/v1\/sessions\/([^/]+)$/.exec(url.pathname);
+    const handler = routes.get(url.pathname) || (sessionMatch ? agentSession : undefined);
     if (handler) {
       req.query = Object.fromEntries(url.searchParams);
+      if (sessionMatch && !routes.has(url.pathname)) {
+        try { req.query.id = decodeURIComponent(sessionMatch[1]); }
+        catch { res.status(400).json({ error: "Invalid session ID" }); return; }
+      }
       const chunks = [];
       let length = 0;
       for await (const chunk of req) {
@@ -93,6 +101,8 @@ const server = createServer(async (req, res) => {
     else res.end();
   }
 });
+
+export { server };
 
 server.listen(Number(process.env.PORT || 3000), "0.0.0.0", () => {
   console.log("Session dashboard server listening");
